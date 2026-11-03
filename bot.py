@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 import logging
+import os
 import random
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import Command, CommandStart
@@ -12,6 +13,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
+from aiohttp import web
 import asyncpg
 
 # ==================== НАСТРОЙКИ ====================
@@ -54,7 +56,6 @@ class OrderState(StatesGroup):
     waiting_for_post = State()
 
 
-# Автоматическое создание таблицы в Neon при запуске
 async def init_db():
     global db_pool
     db_pool = await asyncpg.create_pool(DATABASE_URL)
@@ -495,6 +496,21 @@ async def scheduler_podgons(bot: Bot):
         await asyncio.sleep(30)
 
 
+# Веб-сервер для бесплатного режима на Render (чтобы сервис не падал)
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+
+async def web_server():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+
 async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
@@ -503,6 +519,8 @@ async def main():
     await init_db()
     logging.info("Бот запущен и подключен к Neon PostgreSQL!")
 
+    # Запускаем веб-сервер и фоновый планировщик подгонов
+    await web_server()
     asyncio.create_task(scheduler_podgons(bot))
 
     await dp.start_polling(bot)
