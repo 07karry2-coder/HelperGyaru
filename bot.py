@@ -13,12 +13,11 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-from aiohttp import web
+from aiohttp import web, ClientSession
 import asyncpg
 
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = "9104618099:AAEq2o4dUJpTNHw2eKQNXq6locc2NW6ZTRU"
-# Ссылка на базу подтягивается из переменных окружения Render (Environment Variables)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 ADMIN_IDS = {5806323165, 6070207785}
@@ -26,6 +25,7 @@ CHANNEL_ID = -1002885280675  # ID канала для постов, топов �
 CHAT_ID = -1004323082027  # ID суперчата с топиками
 TOPIC_BROADCAST = 25  # Тема для рассылки
 TOPIC_STOP = 26  # Тема для стопа
+RENDER_URL = "https://helpergyaru.onrender.com"  # Твой адрес на Render
 
 PODGON_LIST = [
     "Слабонервным лучше НЕ ОТКРЫВАТЬ!!! Серьезно, мы предупредили.",
@@ -57,13 +57,10 @@ class OrderState(StatesGroup):
     waiting_for_post = State()
 
 
-# Автоматическое создание таблицы в Neon при запуске
 async def init_db():
     global db_pool
     if not DATABASE_URL:
-        logging.error(
-            "⚠️ ОШИБКА: Переменная окружения DATABASE_URL не задана!"
-        )
+        logging.error("⚠️ ОШИБКА: Переменная окружения DATABASE_URL не задана!")
         return
     db_pool = await asyncpg.create_pool(DATABASE_URL)
     async with db_pool.acquire() as conn:
@@ -81,7 +78,6 @@ async def init_db():
         """)
 
 
-# --- Клавиатуры ---
 def main_menu_kb():
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -210,7 +206,6 @@ def confirm_kb():
     )
 
 
-# --- Обработчики ---
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
@@ -503,6 +498,19 @@ async def scheduler_podgons(bot: Bot):
         await asyncio.sleep(30)
 
 
+# Внутренний само-пинг, чтобы Render не усыплял бота
+async def self_ping():
+    await asyncio.sleep(30)  # Ждем старта сервера
+    async with ClientSession() as session:
+        while True:
+            try:
+                async with session.get(RENDER_URL) as response:
+                    logging.info(f"Self-ping status: {response.status}")
+            except Exception as e:
+                logging.error(f"Self-ping error: {e}")
+            await asyncio.sleep(300)  # Каждые 5 минут отправляем запрос сами себе
+
+
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -527,6 +535,7 @@ async def main():
 
     await web_server()
     asyncio.create_task(scheduler_podgons(bot))
+    asyncio.create_task(self_ping())  # Запускаем постоянный само-пинг
 
     await dp.start_polling(bot)
 
