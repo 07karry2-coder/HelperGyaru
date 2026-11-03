@@ -18,7 +18,8 @@ import asyncpg
 
 # ==================== НАСТРОЙКИ ====================
 BOT_TOKEN = "9104618099:AAEq2o4dUJpTNHw2eKQNXq6locc2NW6ZTRU"
-DATABASE_URL = "postgresql://neondb_owner:npg_iv0Dn6jWHRVY@ep-empty-frog-bdv03t7y-pooler.c-8.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+# Ссылка на базу подтягивается из переменных окружения Render (Environment Variables)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 ADMIN_IDS = {5806323165, 6070207785}
 CHANNEL_ID = -1002885280675  # ID канала для постов, топов и подгонов
@@ -56,8 +57,14 @@ class OrderState(StatesGroup):
     waiting_for_post = State()
 
 
+# Автоматическое создание таблицы в Neon при запуске
 async def init_db():
     global db_pool
+    if not DATABASE_URL:
+        logging.error(
+            "⚠️ ОШИБКА: Переменная окружения DATABASE_URL не задана!"
+        )
+        return
     db_pool = await asyncpg.create_pool(DATABASE_URL)
     async with db_pool.acquire() as conn:
         await conn.execute("""
@@ -496,7 +503,6 @@ async def scheduler_podgons(bot: Bot):
         await asyncio.sleep(30)
 
 
-# Веб-сервер для бесплатного режима на Render (чтобы сервис не падал)
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -519,7 +525,6 @@ async def main():
     await init_db()
     logging.info("Бот запущен и подключен к Neon PostgreSQL!")
 
-    # Запускаем веб-сервер и фоновый планировщик подгонов
     await web_server()
     asyncio.create_task(scheduler_podgons(bot))
 
@@ -528,3 +533,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+ 
